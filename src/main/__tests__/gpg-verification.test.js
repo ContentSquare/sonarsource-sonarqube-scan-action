@@ -31,6 +31,82 @@ import {
   convertToUnixPath,
 } from "../gpg-verification.js";
 
+/**
+ * Helper function to temporarily mock process.platform for a test.
+ * Automatically restores the original platform value after the test.
+ * @param {string} platform - The platform to mock (e.g., "win32", "linux")
+ * @param {Function} testFn - The test function to run with the mocked platform
+ */
+function withMockedPlatform(platform, testFn) {
+  const originalPlatform = process.platform;
+  Object.defineProperty(process, "platform", {
+    value: platform,
+    writable: true,
+    configurable: true,
+  });
+
+  try {
+    testFn();
+  } finally {
+    Object.defineProperty(process, "platform", {
+      value: originalPlatform,
+      writable: true,
+      configurable: true,
+    });
+  }
+}
+
+/**
+ * Helper function to create a GPG home directory and track it for cleanup.
+ * @param {Array} tempDirs - Array to track temporary directories for cleanup
+ * @returns {string} The path to the created GPG home directory
+ */
+function createTrackedGpgHome(tempDirs) {
+  const gpgHome = setupGpgHome();
+  tempDirs.push(gpgHome);
+  assert.ok(fs.existsSync(gpgHome));
+  return gpgHome;
+}
+
+/**
+ * Helper function to temporarily mock environment variables for a test.
+ * Automatically restores or deletes environment variables after the test.
+ * @param {Object} envVars - Object with environment variable names as keys and values as values
+ * @param {Function} testFn - The async test function to run with the mocked environment
+ */
+async function withMockedEnv(envVars, testFn) {
+  const originalValues = {};
+
+  // Save original values and set new ones
+  for (const [key, value] of Object.entries(envVars)) {
+    originalValues[key] = process.env[key];
+    process.env[key] = value;
+  }
+
+  try {
+    await testFn();
+  } finally {
+    // Restore or delete environment variables
+    for (const [key, originalValue] of Object.entries(originalValues)) {
+      if (originalValue === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = originalValue;
+      }
+    }
+  }
+}
+
+/**
+ * Helper function to create a temporary directory.
+ * @returns {string} The path to the created temporary directory
+ */
+function createTempDir() {
+  const tempDir = path.join(os.tmpdir(), `test-runner-temp-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  return tempDir;
+}
+
 describe("gpg-verification", () => {
   let tempDirs = [];
 
@@ -57,15 +133,7 @@ describe("gpg-verification", () => {
 
   describe("convertToUnixPath", () => {
     it("should convert Windows path with drive letter to Unix path", () => {
-      // Mock Windows platform
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, "platform", {
-        value: "win32",
-        writable: true,
-        configurable: true,
-      });
-
-      try {
+      withMockedPlatform("win32", () => {
         assert.equal(
             convertToUnixPath(String.raw`C:\a\_temp\gpg-home`),
           "/c/a/_temp/gpg-home"
@@ -74,67 +142,32 @@ describe("gpg-verification", () => {
             convertToUnixPath(String.raw`D:\Users\test\file.txt`),
           "/d/Users/test/file.txt"
         );
-      } finally {
-        // Restore original platform
-        Object.defineProperty(process, "platform", {
-          value: originalPlatform,
-          writable: true,
-          configurable: true,
-        });
-      }
+      });
     });
 
     it("should handle mixed slashes on Windows", () => {
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, "platform", {
-        value: "win32",
-        writable: true,
-        configurable: true,
-      });
-
-      try {
+      withMockedPlatform("win32", () => {
         assert.equal(
             convertToUnixPath(String.raw`C:\a/_temp\gpg-home`),
           "/c/a/_temp/gpg-home"
         );
-      } finally {
-        Object.defineProperty(process, "platform", {
-          value: originalPlatform,
-          writable: true,
-          configurable: true,
-        });
-      }
+      });
     });
 
     it("should return path unchanged on non-Windows platforms", () => {
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, "platform", {
-        value: "linux",
-        writable: true,
-        configurable: true,
-      });
-
-      try {
+      withMockedPlatform("linux", () => {
         assert.equal(
           convertToUnixPath("/tmp/gpg-home"),
           "/tmp/gpg-home"
         );
-      } finally {
-        Object.defineProperty(process, "platform", {
-          value: originalPlatform,
-          writable: true,
-          configurable: true,
-        });
-      }
+      });
     });
   });
 
   describe("setupGpgHome", () => {
     it("should create a temporary GPG home directory", () => {
-      const gpgHome = setupGpgHome();
-      tempDirs.push(gpgHome);
+      const gpgHome = createTrackedGpgHome(tempDirs);
 
-      assert.ok(fs.existsSync(gpgHome));
       assert.ok(fs.statSync(gpgHome).isDirectory());
 
       // Check directory permissions (on Unix systems)
@@ -146,35 +179,24 @@ describe("gpg-verification", () => {
     });
 
     it("should create unique directories on multiple calls", async () => {
-      const gpgHome1 = setupGpgHome();
+      const gpgHome1 = createTrackedGpgHome(tempDirs);
       // Small delay to ensure different timestamps
       await new Promise((resolve) => setTimeout(resolve, 10));
-      const gpgHome2 = setupGpgHome();
-      tempDirs.push(gpgHome1, gpgHome2);
+      const gpgHome2 = createTrackedGpgHome(tempDirs);
 
       assert.notEqual(gpgHome1, gpgHome2);
-      assert.ok(fs.existsSync(gpgHome1));
-      assert.ok(fs.existsSync(gpgHome2));
     });
 
-    it("should use RUNNER_TEMP if available", () => {
-      const originalRunnerTemp = process.env.RUNNER_TEMP;
-      const testTemp = path.join(os.tmpdir(), `test-runner-temp-${Date.now()}`);
+    it("should use RUNNER_TEMP if available", async () => {
+      const testTemp = createTempDir();
 
-      try {
-        fs.mkdirSync(testTemp, { recursive: true });
-        process.env.RUNNER_TEMP = testTemp;
-
-        const gpgHome = setupGpgHome();
-        tempDirs.push(gpgHome);
-
+      await withMockedEnv({ RUNNER_TEMP: testTemp }, async () => {
+        const gpgHome = createTrackedGpgHome(tempDirs);
         assert.ok(gpgHome.startsWith(testTemp));
-        assert.ok(fs.existsSync(gpgHome));
-      } finally {
-        process.env.RUNNER_TEMP = originalRunnerTemp;
-        if (fs.existsSync(testTemp)) {
-          fs.rmSync(testTemp, { recursive: true, force: true });
-        }
+      });
+
+      if (fs.existsSync(testTemp)) {
+        fs.rmSync(testTemp, { recursive: true, force: true });
       }
     });
   });
@@ -206,8 +228,7 @@ describe("gpg-verification", () => {
 
   describe("importSonarSourceKey - fallback behavior", () => {
     it("should use fallback keyserver when primary fails", async () => {
-      const gpgHome = setupGpgHome();
-      tempDirs.push(gpgHome);
+      const gpgHome = createTrackedGpgHome(tempDirs);
 
       // Use an invalid keyserver as primary that will definitely fail
       const invalidKeyserver = "hkps://invalid.keyserver.that.does.not.exist.example.com";
@@ -227,8 +248,7 @@ describe("gpg-verification", () => {
       // This is more of an integration test - only runs if GPG is available
       // Skip if running in environment without GPG or network access
       try {
-        const gpgHome = setupGpgHome();
-        tempDirs.push(gpgHome);
+        const gpgHome = createTrackedGpgHome(tempDirs);
 
         const keyserver = "hkps://keyserver.ubuntu.com";
         const keyFingerprint = "679F1EE92B19609DE816FDE81DB198F93525EC1A";
