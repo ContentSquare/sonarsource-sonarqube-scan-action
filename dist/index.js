@@ -1,20 +1,20 @@
 import { i as isRooted, w as which, e as exists, a as info, d as debug, m as mkdirP, c as cp, H as HttpClient, r as rmRF, b as isDebug, f as execExports, g as warning, h as addPath, s as setFailed, j as getInput, k as getBooleanInput, l as core } from './exec-zlpfwmpH.js';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
-import fs__default from 'fs';
 import * as os from 'os';
 import * as child from 'child_process';
 import * as path from 'path';
-import { join } from 'path';
 import * as stream from 'stream';
 import * as require$$6 from 'util';
 import { ok } from 'assert';
 import 'string_decoder';
 import * as events from 'events';
 import { setTimeout as setTimeout$1 } from 'timers';
-import * as fs$1 from 'node:fs';
 import * as os$1 from 'node:os';
 import * as path$1 from 'node:path';
+import { join } from 'node:path';
+import * as fs$1 from 'node:fs';
+import fs__default from 'node:fs';
 import 'http';
 import 'https';
 import 'net';
@@ -3963,7 +3963,7 @@ function convertToUnixPath(windowsPath) {
   }
 
   // Convert backslashes to forward slashes
-  let unixPath = windowsPath.replace(/\\/g, "/");
+  let unixPath = windowsPath.replaceAll('\\', "/");
 
   // Convert drive letter (e.g., C: -> /c)
   unixPath = unixPath.replace(/^([A-Za-z]):/, (match, drive) => {
@@ -4045,7 +4045,6 @@ async function importSonarSourceKey(gpgHome, keyFingerprint, keyserver) {
     info(`Attempting fallback keyserver ${FALLBACK_KEYSERVER}...`);
     await tryImportKey(gpgHome, keyFingerprint, FALLBACK_KEYSERVER);
     info(`Successfully imported key from fallback keyserver ${FALLBACK_KEYSERVER}`);
-    return;
   } catch (fallbackError) {
     throw new Error(
       `Failed to import SonarSource public key from all keyservers. ` +
@@ -4135,7 +4134,7 @@ async function installSonarScanner({
   scannerBinariesUrl,
   skipSignatureVerification = false,
 }) {
-  const flavor = getPlatformFlavor(os.platform(), os.arch());
+  const flavor = getPlatformFlavor(os$1.platform(), os$1.arch());
 
   // Check if tool is already cached
   let toolDir = find(TOOLNAME, scannerVersion, flavor);
@@ -4177,7 +4176,7 @@ async function installSonarScanner({
     const extractedPath = await extractZip(downloadPath);
 
     // Find the actual scanner directory inside the extracted folder
-    const scannerPath = path.join(
+    const scannerPath = path$1.join(
       extractedPath,
       scannerDirName(scannerVersion, flavor)
     );
@@ -4190,7 +4189,7 @@ async function installSonarScanner({
   }
 
   // Add the bin directory to PATH
-  const binDir = path.join(toolDir, "bin");
+  const binDir = path$1.join(toolDir, "bin");
   addPath(binDir);
 
   return toolDir;
@@ -4285,15 +4284,15 @@ async function runSonarScanner(
   }
 
   // The SSL folder may exist on an uncleaned self-hosted runner
-  const sslFolder = path.join(os.homedir(), ".sonar", "ssl");
-  const truststoreFile = path.join(sslFolder, "truststore.p12");
+  const sslFolder = path$1.join(os$1.homedir(), ".sonar", "ssl");
+  const truststoreFile = path$1.join(sslFolder, "truststore.p12");
 
   const keytoolParams = {
     scannerDir,
     truststoreFile,
   };
 
-  if (fs.existsSync(truststoreFile)) {
+  if (fs$1.existsSync(truststoreFile)) {
     let aliasSonarIsPresent = true;
 
     try {
@@ -4315,16 +4314,16 @@ async function runSonarScanner(
 
   if (sonarRootCert) {
     info("Adding SSL certificate to the Scanner truststore");
-    const tempCertPath = path.join(runnerTemp, "tmpcert.pem");
+    const tempCertPath = path$1.join(runnerTemp, "tmpcert.pem");
 
     try {
-      fs.unlinkSync(tempCertPath);
+      fs$1.unlinkSync(tempCertPath);
     } catch (_) {
       // File doesn't exist, ignore
     }
 
-    fs.writeFileSync(tempCertPath, sonarRootCert);
-    fs.mkdirSync(sslFolder, { recursive: true });
+    fs$1.writeFileSync(tempCertPath, sonarRootCert);
+    fs$1.mkdirSync(sslFolder, { recursive: true });
 
     await importCertificateToTruststore(keytoolParams, tempCertPath);
 
