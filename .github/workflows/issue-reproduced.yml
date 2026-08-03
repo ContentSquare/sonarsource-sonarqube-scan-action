@@ -29,7 +29,7 @@ jobs:
         shell: powershell
         run: |
           choco config set commandExecutionTimeout 600
-          choco install gnupg -y --no-progress --retries 3 --retry-delay 5
+          choco install gnupg -y --no-progress --params "/S" --retries 3 --retry-delay 5
           # The reporter's gpg lives at C:\Program Files (x86)\GnuPG\bin\gpg.exe.
           # Prepend the native GnuPG dir to PATH so `gpg` resolves to it (and NOT to
           # the Git-for-Windows build, which would mask the bug by accepting /r/... paths).
