@@ -25,11 +25,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install native GnuPG (Gpg4win) and put it first on PATH
+      - name: Install native GnuPG (winget GnuPG.GnuPG) and put it first on PATH
         shell: powershell
         run: |
-          choco config set commandExecutionTimeout 600
-          choco install gnupg -y --no-progress --install-arguments "/S" --retries 3 --retry-delay 5
+          # Install native GnuPG via winget. The choco 'gnupg' package hangs at
+          # "Installing gnupg..." (its installer blocks in the non-interactive runner
+          # session), so we use winget's GnuPG.GnuPG package instead.
+          winget install --id GnuPG.GnuPG --exact --silent `
+            --accept-source-agreements --accept-package-agreements --disable-interactivity
+          # winget exits non-zero for benign cases (e.g. already installed); don't fail
+          # here on that. The gpg.exe presence check below is the real gate.
+          Write-Host "winget exit code: $LASTEXITCODE"
           # The reporter's gpg lives at C:\Program Files (x86)\GnuPG\bin\gpg.exe.
           # Prepend the native GnuPG dir to PATH so `gpg` resolves to it (and NOT to
           # the Git-for-Windows build, which would mask the bug by accepting /r/... paths).
