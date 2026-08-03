@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install native GnuPG (Gpg4win) and put it first on PATH
-        shell: pwsh
+        shell: powershell
         run: |
           choco install gnupg -y --no-progress
           # The reporter's gpg lives at C:\Program Files (x86)\GnuPG\bin\gpg.exe.
@@ -42,7 +42,7 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $gpgDir
 
       - name: Confirm `gpg` resolves to native GnuPG
-        shell: pwsh
+        shell: powershell
         run: |
           $g = Get-Command gpg
           Write-Host "gpg resolves to: $($g.Source)"
@@ -53,7 +53,7 @@ jobs:
           }
 
       - name: Root-cause demo — native gpg rejects an MSYS-style --homedir
-        shell: pwsh
+        shell: powershell
         continue-on-error: true
         run: |
           # convertToUnixPath() would turn e.g. C:\...\gpg-home into /c/.../gpg-home.
@@ -73,7 +73,7 @@ jobs:
           skipSignatureVerification: false
 
       - name: Assert the bug reproduced
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Action step outcome: ${{ steps.action.outcome }}"
           if ("${{ steps.action.outcome }}" -eq "failure") {
