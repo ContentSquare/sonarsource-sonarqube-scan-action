@@ -1,0 +1,84 @@
+# Reproducer for: "sonarqube-scan-action GPG check not working on Windows runner"
+# https://community.sonarsource.com/t/sonarqube-scan-action-gpg-check-not-working-on-windows-runner/186785
+#
+# Root cause (see investigation.md): on Windows, convertToUnixPath() rewrites drive
+# letters into MSYS/Git-Bash form (R:\... -> /r/...). The native GnuPG (Gpg4win) that
+# the reporter has on PATH (C:\Program Files (x86)\GnuPG\bin\gpg.exe) cannot resolve
+# that form, so GPG signature verification fails.
+#
+# This workflow reproduces the failure by installing native GnuPG and putting it first
+# on PATH, matching the reporter's environment. It runs the local action (which executes
+# the committed dist/index.js) and expects it to FAIL during signature verification.
+
+name: Reproduce GPG check failure on Windows
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce-windows-gpg-bug:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install native GnuPG (Gpg4win) and put it first on PATH
+        shell: pwsh
+        run: |
+          choco install gnupg -y --no-progress
+          # The reporter's gpg lives at C:\Program Files (x86)\GnuPG\bin\gpg.exe.
+          # Prepend the native GnuPG dir to PATH so `gpg` resolves to it (and NOT to
+          # the Git-for-Windows build, which would mask the bug by accepting /r/... paths).
+          $candidates = @(
+            "C:\Program Files (x86)\GnuPG\bin",
+            "C:\Program Files\GnuPG\bin"
+          )
+          $gpgDir = $candidates | Where-Object { Test-Path (Join-Path $_ "gpg.exe") } | Select-Object -First 1
+          if (-not $gpgDir) { Write-Error "Native GnuPG not found after install"; exit 1 }
+          Write-Host "Using native GnuPG from: $gpgDir"
+          Add-Content -Path $env:GITHUB_PATH -Value $gpgDir
+
+      - name: Confirm `gpg` resolves to native GnuPG
+        shell: pwsh
+        run: |
+          $g = Get-Command gpg
+          Write-Host "gpg resolves to: $($g.Source)"
+          gpg --version
+          if ($g.Source -notmatch "GnuPG") {
+            Write-Error "Expected native GnuPG on PATH but got: $($g.Source)"
+            exit 1
+          }
+
+      - name: Root-cause demo — native gpg rejects an MSYS-style --homedir
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          # convertToUnixPath() would turn e.g. C:\...\gpg-home into /c/.../gpg-home.
+          # Show that native GnuPG cannot use such a --homedir.
+          $msysHome = "/c/Users/runneradmin/gpg-home-demo"
+          Write-Host "Running: gpg --homedir '$msysHome' --batch --list-keys"
+          gpg --homedir "$msysHome" --batch --list-keys
+          Write-Host "native-gpg exit code with MSYS-style homedir: $LASTEXITCODE"
+
+      - name: Run the action (expected to FAIL at GPG signature verification)
+        id: action
+        continue-on-error: true
+        # No SONAR_TOKEN / server needed: the failure happens during signature
+        # verification in installSonarScanner, before the scanner is ever invoked.
+        uses: ./
+        with:
+          skipSignatureVerification: false
+
+      - name: Assert the bug reproduced
+        shell: pwsh
+        run: |
+          Write-Host "Action step outcome: ${{ steps.action.outcome }}"
+          if ("${{ steps.action.outcome }}" -eq "failure") {
+            Write-Host "OK - Bug reproduced: the action failed on Windows with native GnuPG."
+          } else {
+            Write-Error "Bug did NOT reproduce (outcome: ${{ steps.action.outcome }}). The GPG path handling may have been fixed."
+            exit 1
+          }
