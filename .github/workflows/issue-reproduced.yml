@@ -28,69 +28,16 @@ jobs:
       - name: Install native GnuPG (Gpg4win) and put it first on PATH
         shell: pwsh
         run: |
-          # Install the native GnuPG (Gpg4win) that the reporter has, at
-          # C:\Program Files (x86)\GnuPG\bin\gpg.exe. We try several strategies so a
-          # transient outage in any single package feed (e.g. Chocolatey returning 503)
-          # does not break the reproducer. The first strategy that yields gpg.exe wins.
-          $ErrorActionPreference = "Stop"
-          $binDirs = @(
+          choco install gnupg -y --no-progress
+          # The reporter's gpg lives at C:\Program Files (x86)\GnuPG\bin\gpg.exe.
+          # Prepend the native GnuPG dir to PATH so `gpg` resolves to it (and NOT to
+          # the Git-for-Windows build, which would mask the bug by accepting /r/... paths).
+          $candidates = @(
             "C:\Program Files (x86)\GnuPG\bin",
             "C:\Program Files\GnuPG\bin"
           )
-          function Find-Gpg {
-            foreach ($d in $binDirs) {
-              if (Test-Path (Join-Path $d "gpg.exe")) { return $d }
-            }
-            return $null
-          }
-
-          # Strategy 1: feed-independent direct download of the official Gpg4win
-          # installer, run silently (NSIS /S). Depends only on files.gpg4win.org.
-          function Install-Direct {
-            $version = "5.1.0"
-            $url = "https://files.gpg4win.org/gpg4win-$version.exe"
-            $installer = Join-Path $env:RUNNER_TEMP "gpg4win-$version.exe"
-            Write-Host "Downloading $url"
-            Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
-            Write-Host "Running silent install (/S)"
-            $p = Start-Process -FilePath $installer -ArgumentList "/S" -Wait -PassThru
-            Write-Host "Installer exit code: $($p.ExitCode)"
-          }
-
-          # Strategy 2: winget (pre-installed on windows runners, version-agnostic).
-          function Install-Winget {
-            winget install --id GnuPG.Gpg4win --exact --silent `
-              --accept-source-agreements --accept-package-agreements --disable-interactivity
-          }
-
-          # Strategy 3: Chocolatey, with retries to ride out transient feed errors.
-          function Install-Choco {
-            for ($i = 1; $i -le 3; $i++) {
-              choco install gnupg -y --no-progress
-              if (Find-Gpg) { return }
-              Write-Host "choco attempt $i did not yield gpg.exe, retrying in 15s..."
-              Start-Sleep -Seconds 15
-            }
-          }
-
-          $strategies = @(
-            @{ Name = "direct-download"; Fn = { Install-Direct } },
-            @{ Name = "winget";          Fn = { Install-Winget } },
-            @{ Name = "choco";           Fn = { Install-Choco  } }
-          )
-          foreach ($s in $strategies) {
-            if (Find-Gpg) { break }
-            Write-Host "== Trying install strategy: $($s.Name) =="
-            try { & $s.Fn } catch { Write-Host "Strategy $($s.Name) failed: $($_.Exception.Message)" }
-          }
-
-          $gpgDir = Find-Gpg
-          if (-not $gpgDir) {
-            Write-Error "Native GnuPG (Gpg4win) could not be installed by any strategy"
-            exit 1
-          }
-          # Prepend the native GnuPG dir to PATH so `gpg` resolves to it (and NOT to
-          # the Git-for-Windows build, which would mask the bug by accepting /r/... paths).
+          $gpgDir = $candidates | Where-Object { Test-Path (Join-Path $_ "gpg.exe") } | Select-Object -First 1
+          if (-not $gpgDir) { Write-Error "Native GnuPG not found after install"; exit 1 }
           Write-Host "Using native GnuPG from: $gpgDir"
           Add-Content -Path $env:GITHUB_PATH -Value $gpgDir
 
