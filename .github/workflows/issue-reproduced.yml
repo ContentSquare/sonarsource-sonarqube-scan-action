@@ -31,8 +31,7 @@ jobs:
           # Install native GnuPG via winget. The choco 'gnupg' package hangs at
           # "Installing gnupg..." (its installer blocks in the non-interactive runner
           # session), so we use winget's GnuPG.GnuPG package instead.
-          winget install --id GnuPG.GnuPG --exact --silent --no-progress `
-            --accept-source-agreements --accept-package-agreements --disable-interactivity
+          winget install --id GnuPG.GnuPG --exact --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
           # winget exits non-zero for benign cases (e.g. already installed); don't fail
           # here on that. The gpg.exe presence check below is the real gate.
           Write-Host "winget exit code: $LASTEXITCODE"
