@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   reproduce-windows-gpg-bug:
-    runs-on: windows-latest
+    runs-on: warp-custom-peachee-windows-dotnet
     steps:
       - name: Checkout
         uses: actions/checkout@v4
